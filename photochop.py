@@ -6,6 +6,7 @@
 from scipy import misc
 import numpy as np
 import os, uuid, time
+from copy import deepcopy
 
 class Photochopper:
 	def __init__(self, orig_image, threshold):
@@ -23,15 +24,39 @@ class Photochopper:
 		self.threshold = threshold;
 
 	def process(self):
-		i = 0
-		# iterate over the image
+		
+		# store all the vertical ranges that have text on them
+		rows = [];
+		current = [0,0];
+		active = False;
+		# do a first pass along the image to find ranges of row with stuff on them
 		for y in range(0, self.original.shape[0]):
+			
+			thisrow = False;
 			for x in range(0, self.original.shape[1]):
-				if self.original[y][x] < self.threshold and self.hits[y][x] == 0:
-					#print('found a match ' + str(y) + ', ' + str(x) + ' : ' + str(self.original[y][x]));
-					self.groups.append(self.__get_connected_pixels(y,x));
-					i += 1
-		print('total matches: ' + str(i));
+				if self.original[y][x] < self.threshold:
+					thisrow = True;
+			#print('row ' + str(y) + ' is ' + ('empty' if not thisrow else 'not empty'));
+			if thisrow:
+				if not active:
+					active = True;
+					current[0] = y;
+			else:
+				if active:
+					active = False;
+					current[1] = y;
+					print('found a range from Y:' + str(current[0]) + ' to Y:' + str(current[1]));
+					rows.append(deepcopy(current));
+
+		i = 0
+		for rng in rows:
+			print('processing ' + str(rng));
+			for x in range(0, self.original.shape[1]):
+				for y in range(rng[0], rng[1]):
+					if self.original[y][x] < self.threshold and self.hits[y][x] == 0:
+						self.groups.append(self.__get_connected_pixels(y,x));
+						i += 1
+		print('total matches: ' + str(i) + ', total ranges: ' + str(len(rows)));
 
 	def export_groups(self, dir_name):
 		if not os.path.exists('out'):
