@@ -5,5 +5,3 @@ chop letters out of a png
 really, really slow. 
 
 ~219 secs per run with the example dataset (3min 57 seconds).
-
-tittles are disconnected from their parent glyphs, pending more work on getting them to connect.

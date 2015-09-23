@@ -29,6 +29,8 @@ class Photochopper:
 		rows = [];
 		current = [0,0];
 		active = False;
+
+
 		# do a first pass along the image to find ranges of row with stuff on them
 		for y in range(0, self.original.shape[0]):
 			
@@ -48,15 +50,38 @@ class Photochopper:
 					print('found a range from Y:' + str(current[0]) + ' to Y:' + str(current[1]));
 					rows.append(deepcopy(current));
 
-		i = 0
+		# set our temporary sparsearray group storage
+		tmpgroups = [];
+		#rows = rows[:1];
+		distinctGroups = 0
 		for rng in rows:
 			print('processing ' + str(rng));
 			for x in range(0, self.original.shape[1]):
 				for y in range(rng[0], rng[1]):
 					if self.original[y][x] < self.threshold and self.hits[y][x] == 0:
-						self.groups.append(self.__get_connected_pixels(y,x));
-						i += 1
-		print('total matches: ' + str(i) + ', total ranges: ' + str(len(rows)));
+						tmpgroups.append(self.__get_connected_pixels(y,x));
+						distinctGroups += 1
+
+		print('aligning diacritics and other multipart glyphs...');
+		addedMultipart = False;
+		totalAligned = 0;
+		for i in range(0, len(tmpgroups) - 1):
+			if addedMultipart:
+				addedMultipart = False;
+				continue;
+			
+			# TODO: make this combine diacretics as well
+			if tmpgroups[i].get_shape()[1] == tmpgroups[i + 1].get_shape()[1]:
+				group = _SparseArray();
+				group.integrate(tmpgroups[i]);
+				group.integrate(tmpgroups[i + 1]);
+				self.groups.append(group.export());
+				addedMultipart = True;
+				totalAligned += 1;
+			else:
+				self.groups.append(tmpgroups[i].export());
+
+		print('total distinct groups: ' + str(distinctGroups) + ' (' + str(totalAligned) + ' composited), total ranges: ' + str(len(rows)));
 
 	def export_groups(self, dir_name):
 		if not os.path.exists('out'):
@@ -88,6 +113,8 @@ class Photochopper:
 
 				for sy in range(-1, 2):
 					for sx in range(-1, 2):
+						if abs(sx) + abs(sy) == 2:
+							continue;
 						if self.original[pixel.y + sy][pixel.x + sx] < self.threshold and group.get(pixel.y + sy, pixel.x + sx) == None and self.hits[pixel.y + sy][pixel.x + sx] == 0:
 							group.set(pixel.y + sy, pixel.x + sx, -1);
 
@@ -100,7 +127,7 @@ class Photochopper:
 
 		points = group.get_bounding_points();
 		print('identified a group of ' + str(len(group.arr)) + ' pixels spanning from ' + str(points[0]) + ' to ' + str(points[1]));
-		return group.export();
+		return deepcopy(group);
 
 
 
@@ -178,7 +205,9 @@ class _SparseArray():
 
 		return export;
 
-
+	def integrate(self, group):
+		for pixel in group.arr:
+			self.set(pixel.y, pixel.x, pixel.val);
 
 if __name__ == "__main__":
 	import argparse
