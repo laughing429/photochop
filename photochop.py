@@ -261,6 +261,8 @@ if __name__ == "__main__":
 	opts = parser.parse_args(); 
 
 	dicer = Photochopper(opts.filename, 150);
+	if opts.process_count != None:
+		dicer.set_max_threads(opts.process_count);
 	start_time = time.clock();
 	dicer.process();
 	end_time = time.clock();
