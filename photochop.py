@@ -30,7 +30,11 @@ class Photochopper:
 		self.threshold = threshold;
 
 		# set the threadcount
-		self.threadcount = cpu_count();
+		try:
+			self.threadcount = cpu_count();
+		except NotImplementedError:
+			self.threadcount = 8;
+			print('cpu_count() is not implemented on this system.');
 
 	def set_max_threads(self, threads):
 		self.threadcount = threads;
