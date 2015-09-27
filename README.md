@@ -2,6 +2,6 @@
 chop letters out of a png
 
 ### notes
-really, really slow. 
+kinda slow. 
 
-~219 secs per run with the example dataset (3min 57 seconds).
+20.183 secs per run (on my machine) with the example dataset.

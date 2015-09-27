@@ -3,9 +3,15 @@
 # a tool that chops a photo into like-pixel groups
 # @author: patrick kage
 
+# this program makes some assumptions about the input file
+# 1. the text is arranged in rows
+# 2. the text is in a single column layout
+
 from scipy import misc
 import numpy as np
 import os, uuid, time
+from multiprocessing import Pool, cpu_count
+from functools import partial
 from copy import deepcopy
 
 class Photochopper:
@@ -23,12 +29,19 @@ class Photochopper:
 		# set the threshold
 		self.threshold = threshold;
 
+		# set the threadcount
+		self.threadcount = cpu_count();
+
+	def set_max_threads(self, threads):
+		self.threadcount = threads;
+
 	def process(self):
 		
 		# store all the vertical ranges that have text on them
 		rows = [];
 		current = [0,0];
 		active = False;
+
 
 
 		# do a first pass along the image to find ranges of row with stuff on them
@@ -38,6 +51,7 @@ class Photochopper:
 			for x in range(0, self.original.shape[1]):
 				if self.original[y][x] < self.threshold:
 					thisrow = True;
+					break;
 			#print('row ' + str(y) + ' is ' + ('empty' if not thisrow else 'not empty'));
 			if thisrow:
 				if not active:
@@ -50,38 +64,23 @@ class Photochopper:
 					print('found a range from Y:' + str(current[0]) + ' to Y:' + str(current[1]));
 					rows.append(deepcopy(current));
 
-		# set our temporary sparsearray group storage
-		tmpgroups = [];
-		#rows = rows[:1];
-		distinctGroups = 0
-		for rng in rows:
-			print('processing ' + str(rng));
-			for x in range(0, self.original.shape[1]):
-				for y in range(rng[0], rng[1]):
-					if self.original[y][x] < self.threshold and self.hits[y][x] == 0:
-						tmpgroups.append(self.__get_connected_pixels(y,x));
-						distinctGroups += 1
 
-		print('aligning diacritics and other multipart glyphs...');
-		addedMultipart = False;
-		totalAligned = 0;
-		for i in range(0, len(tmpgroups) - 1):
-			if addedMultipart:
-				addedMultipart = False;
-				continue;
-			
-			# TODO: make this combine diacretics as well
-			if tmpgroups[i].get_shape()[1] == tmpgroups[i + 1].get_shape()[1]:
-				group = _SparseArray();
-				group.integrate(tmpgroups[i]);
-				group.integrate(tmpgroups[i + 1]);
-				self.groups.append(group.export());
-				addedMultipart = True;
-				totalAligned += 1;
-			else:
-				self.groups.append(tmpgroups[i].export());
+		# commence shoehorned multithreading
+		print('slicing data for multithreading...');
+		slices = [];
+		for row in rows:
+			slices.append(self.original[row[0]:row[1]]);
 
-		print('total distinct groups: ' + str(distinctGroups) + ' (' + str(totalAligned) + ' composited), total ranges: ' + str(len(rows)));
+		# create the thread pool
+		threads = Pool(self.threadcount);
+		print("created pool of up to " + str(self.threadcount) + " threads");
+
+		# create a partial
+		processor = partial(process_row, self.threshold);
+		tmpgroups = threads.map(processor, slices);
+
+		for x in tmpgroups:
+			self.groups += x;
 
 	def export_groups(self, dir_name):
 		if not os.path.exists('out'):
@@ -95,59 +94,94 @@ class Photochopper:
 			i += 1;
 		print('saved all groups');
 
-	def __get_connected_pixels(self, y, x):
-		# first, create a sparse array to hold the group
-		group = _SparseArray();
+# this is because of multithreading
+def process_row(threshold, original):
+	groups = [];
+	final = [];
+	hits = np.zeros(original.shape);
 
-		# create a pixel with a value of -1 (means we should paint around it)
-		group.set(y, x, -1);
+	# look for connected pixels
+	for x in range(0, original.shape[1]):
+		for y in range(0, original.shape[0]):
+			if original[y][x] < threshold and hits[y][x] == 0:
+				# (re)create a sparse array
+				group = _SparseArray();
+				# make sure we look around the origin point
+				group.set(y,x,-1);
 
-		# grab all connected pixels
-		while True:
-			# pixels to look at next 
-			pxls = group.get_all_of(-1);
-			for pixel in pxls:
-				orig = self.original[y][x];
-				group.set(pixel.y, pixel.x, orig);
-				#print('searching for ' + str(pixel.y) + ', ' + str(pixel.x) + ' : ' + str(pixel.val) );
+				# this should be better but it isn't
+				while True:
+					# pixels to look at next
+					pxls = group.get_all_of(-1);
+					for pixel in pxls:
+						# there should be a better way of doing this
+						orig = original[y][x];
+						group.set(pixel.y, pixel.x, orig);
 
-				for sy in range(-1, 2):
-					for sx in range(-1, 2):
-						if abs(sx) + abs(sy) == 2:
-							continue;
-						if self.original[pixel.y + sy][pixel.x + sx] < self.threshold and group.get(pixel.y + sy, pixel.x + sx) == None and self.hits[pixel.y + sy][pixel.x + sx] == 0:
-							group.set(pixel.y + sy, pixel.x + sx, -1);
+						# search around the pixel
+						for sy in range(-1, 2):
+							for sx in range(-1, 2):
+								if abs(sx) + abs(sy) == 2:
+									continue;
+								try:
+									if original[pixel.y + sy][pixel.x + sx] < threshold and group.get(pixel.y + sy, pixel.x + sx) == None and hits[pixel.y + sy][pixel.x + sx] == 0:
+										group.set(pixel.y + sy, pixel.x + sx, -1);
+								except:
+									pass; # shhhhh... it's okay.
 
-			if not group.contains(-1):
-				break; 
+					if not group.contains(-1):
+						break;
 
-		# mark the pixels we've found as hit
-		for pxl in group.arr:
-			self.hits[pxl.y][pxl.x] = 1;
+				# set the pixels we've hit into the hit group
+				for pxl in group.arr:
+					hits[pxl.y][pxl.x] = 1;
 
-		points = group.get_bounding_points();
-		print('identified a group of ' + str(len(group.arr)) + ' pixels spanning from ' + str(points[0]) + ' to ' + str(points[1]));
-		return deepcopy(group);
+				points = group.get_bounding_points();
+				# brag a little bit
+				print('identified a group of ' + str(len(group.arr)) + ' pixels spanning from ' + str(points[0]) + ' to ' + str(points[1]));
+				groups.append(deepcopy(group));
+
+	# align diacritics
+	addedMultipart = False;
+	for i in range(0, len(groups) - 1):
+		if addedMultipart:
+			addedMultipart = False;
+			continue;
+		
+		# TODO: make this combine diacretics as well
+		if groups[i].get_shape()[1] == groups[i + 1].get_shape()[1]:
+			group = _SparseArray();
+			group.integrate(groups[i]);
+			group.integrate(groups[i + 1]);
+			final.append(group.export());
+			addedMultipart = True;
+		else:
+			final.append(groups[i].export());
+
+	print('thread finished');
+	return final;
 
 
-
-
+# Class to hold a pixel value
 class _Pixel():
 	def __init__(self, y, x, val):
 		self.x = x;
 		self.y = y;
 		self.val = val;
 
+# sparse array
 class _SparseArray():
 	def __init__(self):
 		self.arr = [];
 
+	# gets a specific pixel
 	def get(self, y, x):
 		for pixel in self.arr:
 			if pixel.y == y and pixel.x == x:
 				return pixel.val;
 		return None;
 
+	# sets a pixel
 	def set(self, y, x, val):
 		for i in range(0, len(self.arr)):
 			pixel = self.arr[i];
@@ -156,6 +190,7 @@ class _SparseArray():
 		self.arr.append(_Pixel(y, x, val));
 		return None;
 
+	# gets a list of all pixels with a specific value
 	def get_all_of(self, val):
 		out = [];
 		for pixel in self.arr:
@@ -163,6 +198,7 @@ class _SparseArray():
 				out.append(pixel);
 		return out;
 
+	# check if the array contains a value
 	def contains(self, val):
 		out = False;
 		for pixel in self.arr:
@@ -170,6 +206,7 @@ class _SparseArray():
 				out = True;
 		return out;
 
+	# gets the min y, min x, max y, and max x of the array
 	def get_shape(self):
 		lowest_x = self.arr[0].x;
 		highest_x = self.arr[0].x;
@@ -188,10 +225,12 @@ class _SparseArray():
 
 		return (lowest_y, lowest_x, highest_y, highest_x);
 
+	# converts the shape to a pair of points
 	def get_bounding_points(self):
 		shape = self.get_shape();
 		return ((shape[0], shape[1]), (shape[0], shape[1]));
 
+	# exports to a numpy array
 	def export(self):
 		shape = self.get_shape();
 		height = shape[2] - shape[0];
@@ -205,6 +244,7 @@ class _SparseArray():
 
 		return export;
 
+	# assimilate another sparse array into itself
 	def integrate(self, group):
 		for pixel in group.arr:
 			self.set(pixel.y, pixel.x, pixel.val);
@@ -213,6 +253,7 @@ if __name__ == "__main__":
 	import argparse
 	parser = argparse.ArgumentParser(description="dice an image, separating out groups of dark pixels");
 	parser.add_argument('filename', type=str, help="an input png file");
+	parser.add_argument('--process-count', type=int, help="number of worker processes to use. uses the cpu core count by default");
 	opts = parser.parse_args(); 
 
 	dicer = Photochopper(opts.filename, 150);
@@ -226,4 +267,3 @@ if __name__ == "__main__":
 	end_time = time.clock();
 	print('saving took ' + str(end_time - start_time) + ' seconds.');
 	
-
