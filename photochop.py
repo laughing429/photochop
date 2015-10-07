@@ -74,39 +74,74 @@ class Photochopper:
 		
 		# store all the vertical ranges that have text on them
 		rows = [];
-		current = [0,0];
-		active = False;
+		
 
 		print('extracting characters...');
 
 		print('\tgrabbing rows...');
-		# do a first pass along the image to find ranges of row with stuff on them
-		for y in range(0, self.original.shape[0]):
-			
-			thisrow = False;
-			for x in range(0, self.original.shape[1]):
-				if self.original[y][x] < self.threshold:
-					thisrow = True;
-					break;
-			#print('row ' + str(y) + ' is ' + ('empty' if not thisrow else 'not empty'));
-			if thisrow:
-				if not active:
+
+		if not self.multiprocessing_enabled:
+			current = [0,0];
+			active = False;
+			# do a first pass along the image to find ranges of row with stuff on them
+			for y in range(0, self.original.shape[0]):
+				
+				thisrow = False;
+				for x in range(0, self.original.shape[1]):
+					if self.original[y][x] < self.threshold:
+						thisrow = True;
+						break;
+				#print('row ' + str(y) + ' is ' + ('empty' if not thisrow else 'not empty'));
+				if thisrow:
+					if not active:
+						active = True;
+						current[0] = y;
+				else:
+					if active:
+						active = False;
+						current[1] = y;
+						sys.stdout.write('\r\t\tfound a range from Y:%6d to Y:%6d' % (current[0], current[1]));
+						sys.stdout.flush();
+						rows.append(deepcopy(current));
+
+
+			if active:
+				current[1] = y;
+				sys.stdout.write('\r\t\tfound a range from Y:%6d to Y:%6d' % (current[0], current[1]));
+				sys.stdout.flush();
+				rows.append(deepcopy(current));
+		else:
+			# create the thread pool
+			threads = Pool(self.threadcount);
+			print("\t\tcreated pool of up to " + str(self.threadcount) + " threads\n\t\tchunking rows...");
+			row_finder = partial(process_rows, self.threshold);
+			row_chunks = [];
+			for i in range(0, self.threadcount):
+				frac = self.original.shape[0] / self.threadcount;
+				row_chunks.append((self.original[i * frac:(i + 1) * frac], i * frac));
+
+			print("\t\tgenerating row flags...");
+			row_flags = threads.map(row_finder, row_chunks);
+			print("\t\tconsolidating row flags...");
+			allflags = [];
+			for row_flag in row_flags:
+				allflags += row_flag;
+
+			print('\t\tgenerating flags...');
+			current = [0,0];
+			active = False;
+
+			for i in range(0, len(allflags)):
+				flag = allflags[i];
+				if flag and not active:
 					active = True;
-					current[0] = y;
-			else:
-				if active:
+					current[0] = i;
+				elif not flag and active:
 					active = False;
-					current[1] = y;
-					sys.stdout.write('\r\t\tfound a range from Y:%6d to Y:%6d' % (current[0], current[1]));
-					sys.stdout.flush();
+					current[1] = i;
 					rows.append(deepcopy(current));
 
 
-		if active:
-			current[1] = y;
-			sys.stdout.write('\r\t\tfound a range from Y:%6d to Y:%6d' % (current[0], current[1]));
-			sys.stdout.flush();
-			rows.append(deepcopy(current));
 
 
 		# commence shoehorned multithreading
@@ -117,9 +152,7 @@ class Photochopper:
 
 
 		if self.multiprocessing_enabled:
-			# create the thread pool
-			threads = Pool(self.threadcount);
-			print("\tcreated pool of up to " + str(self.threadcount) + " threads");
+			
 
 			# create a partial
 			processor = partial(process_row, self.threshold, self.diacritics_enabled, self.diagonal_connections);
@@ -278,6 +311,21 @@ def process_row(threshold, enable_diacritics, enable_diagonals, original):
 	sys.stdout.write('\r\t\t(thread finished)');
 	sys.stdout.flush();
 	return final;
+
+
+def process_rows(threshold, bundle):
+	chunk = bundle[0];
+	y_offset = bundle[1];
+	out = [];
+	for y in range(0, chunk.shape[0]):
+		empty = False;
+		for x in range(0, chunk.shape[1]):
+			if chunk[y][x] < threshold:
+				empty = True;
+				break;
+		out.append(empty);
+	return out;
+
 
 # Class to hold a pixel value
 class _Pixel():
