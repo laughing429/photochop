@@ -101,11 +101,13 @@ class Photochopper:
 					sys.stdout.flush();
 					rows.append(deepcopy(current));
 
+
 		if active:
 			current[1] = y;
 			sys.stdout.write('\r\t\tfound a range from Y:%6d to Y:%6d' % (current[0], current[1]));
 			sys.stdout.flush();
 			rows.append(deepcopy(current));
+
 
 		# commence shoehorned multithreading
 		print('\n\t\t%d rows found.\n\tslicing data for multithreading...' % len(rows));
@@ -120,7 +122,7 @@ class Photochopper:
 			print("\tcreated pool of up to " + str(self.threadcount) + " threads");
 
 			# create a partial
-			processor = partial(process_row, self.threshold, self.diacritics_enabled, self.diacritics_enabled);
+			processor = partial(process_row, self.threshold, self.diacritics_enabled, self.diagonal_connections);
 			print("\tprocessing....");
 			tmpgroups = threads.map(processor, slices);
 		else:
@@ -185,7 +187,6 @@ class Photochopper:
 		angle = math.asin(self.original.shape[0] * float(slope)/self.original.shape[0]);
 		print('\t\tangle: ' + str(angle) + ' (rvalue: ' + str(r_value) + ', slope: ' + str(slope) + ')');
 
-
 		print('\trotating...');
 		self.original = ndimage.rotate(self.original, angle, cval=255);
 
@@ -206,16 +207,21 @@ def process_row(threshold, enable_diacritics, enable_diagonals, original):
 				# (re)create a sparse array
 				group = _SparseArray();
 				# make sure we look around the origin point
-				group.set(y,x,-1);
+#				group.set(y,x,-1);
 
+				open_pixels = [_Pixel(y,x,-1)];
 				# this should be better but it isn't
 				while True:
 					# pixels to look at next
-					pxls = group.get_all_of(-1);
-					for pixel in pxls:
+					to_add = [];
+					for i in range(0, len(open_pixels)):
+						
+						pixel = open_pixels[i];
 						# there should be a better way of doing this
 						orig = original[y][x];
 						group.set(pixel.y, pixel.x, orig);
+
+						
 
 						# search around the pixel
 						for sy in range(-1, 2):
@@ -223,12 +229,17 @@ def process_row(threshold, enable_diacritics, enable_diagonals, original):
 								if abs(sx) + abs(sy) == 2 and not enable_diagonals:
 									continue;
 								try:
-									if original[pixel.y + sy][pixel.x + sx] < threshold and group.get(pixel.y + sy, pixel.x + sx) == None and hits[pixel.y + sy][pixel.x + sx] == 0:
-										group.set(pixel.y + sy, pixel.x + sx, -1);
+									# and group.get(pixel.y + sy, pixel.x + sx) == None
+									if original[pixel.y + sy][pixel.x + sx] < threshold and hits[pixel.y + sy][pixel.x + sx] == 0:
+										#group.set(pixel.y + sy, pixel.x + sx, -1);
+										to_add.append(_Pixel(pixel.y + sy, pixel.x + sx, -1));
+										hits[pixel.y + sy][pixel.x + sx] = 1;
+
 								except:
 									pass; # shhhhh... it's okay.
-
-					if not group.contains(-1):
+						
+					open_pixels = to_add;
+					if len(open_pixels) == 0:
 						break;
 
 				# set the pixels we've hit into the hit group
@@ -265,8 +276,8 @@ def process_row(threshold, enable_diacritics, enable_diagonals, original):
 			final.append(group.export());
 
 	sys.stdout.write('\r\t\t(thread finished)');
+	sys.stdout.flush();
 	return final;
-
 
 # Class to hold a pixel value
 class _Pixel():
@@ -289,12 +300,8 @@ class _SparseArray():
 
 	# sets a pixel
 	def set(self, y, x, val):
-		for i in range(0, len(self.arr)):
-			pixel = self.arr[i];
-			if pixel.y == y and pixel.x == x:
-				self.arr[i] = _Pixel(y, x, val);
 		self.arr.append(_Pixel(y, x, val));
-		return None;
+#		return None;
 
 	# gets a list of all pixels with a specific value
 	def get_all_of(self, val):
