@@ -186,12 +186,37 @@ class Photochopper:
 	def export_groups(self, dir_name):
 		if not os.path.exists('out'):
 			os.mkdir('out');
+
+
+		# make the final output square
+		def make_square(grp):
+			# figure out the final size of the matrix and fill it with zeroes
+			final_size = max(grp.shape[0], grp.shape[1]);
+			final = np.zeros((final_size, final_size));
+			final.fill(255);
+
+			# starting position (where to start writing the matrix)
+			starting = [0,0];
+			if final_size == grp.shape[0]:
+				starting[1] = (final_size/2) - (grp.shape[1]/2);
+			else:
+				starting[0] = (final_size/2) - (grp.shape[0]/2);
+
+
+			# write the matrix
+			for y in range(0, grp.shape[0]):
+				for x in range(0, grp.shape[1]):
+					final[y + starting[0]][x + starting[1]] = grp[y][x];
+
+			return final;
+
+
 		os.mkdir('out/' + dir_name);
 		print('created directory out/' + dir_name);
 		
 		i = 0;
 		for group in self.groups:
-			misc.imsave('out/' + dir_name + '/' + str(i) + '.jpg', group);
+			misc.imsave('out/' + dir_name + '/' + str(i) + '.png', make_square(group));
 			i += 1;
 		print('saved all groups');
 
@@ -316,8 +341,8 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 				points[0][0] += y_offset;
 				points[1][0] += y_offset;
 				# brag a little bit
-				sys.stdout.write('\r\t\tidentified a group of %6d pixels spanning from %s to %s         ' % (len(group.arr), points[0], points[1]));
-				sys.stdout.flush();
+				#sys.stdout.write('\r\t\tidentified a group of %6d pixels spanning from %s to %s         ' % (len(group.arr), points[0], points[1]));
+				#sys.stdout.flush();
 				groups.append(deepcopy(group));
 
 	# remove smaller groups
@@ -353,7 +378,7 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 		for group in groups:
 			final.append(group.export());
 
-	sys.stdout.write('\r\t\t(thread finished)');
+	sys.stdout.write('\r\t\t(thread finished) for row at ' + str(y_offset));
 	sys.stdout.flush();
 	return final;
 
