@@ -42,6 +42,12 @@ class Photochopper:
 		# multiprocessing enabled
 		self.multiprocessing_enabled = True;
 
+		# set row despeckle size
+		self.row_despeckle_size = 3;
+
+		# set minimum group size
+		self.minimum_group_size = 5;
+
 		# set the threadcount
 		try:
 			self.threadcount = cpu_count();
@@ -67,7 +73,16 @@ class Photochopper:
 	def enable_multiprocessing(self, val):
 		self.multiprocessing_enabled = val;
 
+	def set_row_despeckle_size(self, val):
+		self.row_despeckle_size = val;
+
+	def set_minimum_group_size(self, val):
+		self.minimum_group_size = val;
+
 	def process(self):
+		print("despeckling...");
+		self.__fast_despeckle();
+		print("done.");
 
 		if self.auto_align:
 			self.__auto_align_document();
@@ -114,7 +129,7 @@ class Photochopper:
 			# create the thread pool
 			threads = Pool(self.threadcount);
 			print("\t\tcreated pool of up to " + str(self.threadcount) + " threads\n\t\tchunking rows...");
-			row_finder = partial(process_rows, self.threshold);
+			row_finder = partial(process_rows, self.threshold, self.row_despeckle_size);
 			row_chunks = [];
 			for i in range(0, self.threadcount):
 				frac = self.original.shape[0] / self.threadcount;
@@ -155,14 +170,14 @@ class Photochopper:
 			
 
 			# create a partial
-			processor = partial(process_row, self.threshold, self.diacritics_enabled, self.diagonal_connections);
+			processor = partial(process_row, self.threshold, self.diacritics_enabled, self.diagonal_connections, self.minimum_group_size);
 			print("\tprocessing....");
 			tmpgroups = threads.map(processor, slices);
 		else:
 			tmpgroups = [];
 			print('\tstarting sequential processing...');
 			for slice in slices:
-				tmpgroups.append(process_row(self.threshold, self.diacritics_enabled, self.diacritics_enabled, slice));
+				tmpgroups.append(process_row(self.threshold, self.diacritics_enabled, self.diacritics_enabled, self.minimum_group_size, slice));
 
 		for x in tmpgroups:
 			self.groups += x;
@@ -176,7 +191,7 @@ class Photochopper:
 		
 		i = 0;
 		for group in self.groups:
-			misc.imsave('out/' + dir_name + '/' + str(i) + '.png', group);
+			misc.imsave('out/' + dir_name + '/' + str(i) + '.jpg', group);
 			i += 1;
 		print('saved all groups');
 
@@ -223,10 +238,28 @@ class Photochopper:
 		print('\trotating...');
 		self.original = ndimage.rotate(self.original, angle, cval=255);
 
+		print('\t\tnew shape: ' + str(self.original.shape));
+
+	def __fast_despeckle(self):
+		self.original = ndimage.binary_closing(self.original);
+		
+		self.original = np.multiply(self.original, 255);
+
+		self.original = self.original[1:];
+		self.original = self.original[:-1];
+
+		for y in range(0, self.original.shape[0]):
+			self.original[y][0] = 255;
+			self.original[y][self.original.shape[1] - 1] = 255;
+
+		misc.imsave("test.png", self.original);
+
+		print(self.original);
+
 
 
 # this is because of multithreading
-def process_row(threshold, enable_diacritics, enable_diagonals, original):
+def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_size, original):
 	groups = [];
 	final = [];
 	y_offset = original[1];
@@ -287,6 +320,13 @@ def process_row(threshold, enable_diacritics, enable_diagonals, original):
 				sys.stdout.flush();
 				groups.append(deepcopy(group));
 
+	# remove smaller groups
+	passed_groups = [];
+	for group in groups:
+		if group.size() >= minimum_group_size:
+			passed_groups.append(group);
+	groups = passed_groups;
+
 	if enable_diacritics:
 		# align diacritics
 		addedMultipart = False;
@@ -296,7 +336,12 @@ def process_row(threshold, enable_diacritics, enable_diagonals, original):
 				continue;
 			
 			# TODO: make this combine diacretics as well
-			if groups[i].get_shape()[1] == groups[i + 1].get_shape()[1]:
+			r1 = groups[i].get_shape();
+			r2 = groups[i + 1].get_shape();
+			r1 = set(range(r1[1], r1[3]));
+			r2 = set(range(r2[1], r2[3]));
+
+			if len(r1.intersection(r2)) != 0:
 				group = _SparseArray();
 				group.integrate(groups[i]);
 				group.integrate(groups[i + 1]);
@@ -313,16 +358,22 @@ def process_row(threshold, enable_diacritics, enable_diagonals, original):
 	return final;
 
 
-def process_rows(threshold, bundle):
+def process_rows(threshold, row_despeckle_size, bundle):
 	chunk = bundle[0];
 	y_offset = bundle[1];
 	out = [];
 	for y in range(0, chunk.shape[0]):
 		empty = False;
+		speck_count = 0;
 		for x in range(0, chunk.shape[1]):
 			if chunk[y][x] < threshold:
-				empty = True;
-				break;
+				if speck_count == row_despeckle_size:
+					empty = True;
+					break;
+				else:
+					speck_count += 1;
+			else:
+				speck_count = 0;
 		out.append(empty);
 	return out;
 
@@ -405,6 +456,9 @@ class _SparseArray():
 
 		return export;
 
+	def size(self):
+		return len(self.arr);
+
 	# assimilate another sparse array into itself
 	def integrate(self, group):
 		for pixel in group.arr:
@@ -420,6 +474,8 @@ if __name__ == "__main__":
 	parser.add_argument('--set-threshold-to', type=int, required=False, help="set the threshold for a match (0-255)");
 	parser.add_argument('--allow-diagonal-connections', action='store_true', required=False, help="allow diagonal connections as well as cardinal");
 	parser.add_argument('--disable-multiprocessing', action='store_false', required=False, help="disable multiprocessing.");
+	parser.add_argument('--row-despeckle-size', type=int, required=False, help="despeckler size for row chopping");
+	parser.add_argument('--minimum-group-size', type=int, required=False, help="minimum pixel group size");
 	opts = parser.parse_args(); 
 
 	dicer = Photochopper(opts.filename, 200);
@@ -428,6 +484,12 @@ if __name__ == "__main__":
 
 	if opts.set_threshold_to != None:
 		dicer.set_threshold(opts.set_threshold_to);
+
+	if opts.minimum_group_size != None:
+		dicer.set_minimum_group_size(opts.minimum_group_size);
+
+	if opts.row_despeckle_size != None:
+		dicer.set_row_despeckle_size(opts.row_despeckle_size);
 
 	dicer.enable_diagonals(opts.allow_diagonal_connections);
 	dicer.enable_diacritics(opts.disable_diacritics);
