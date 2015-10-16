@@ -277,9 +277,7 @@ class Photochopper:
 			self.original[y][0] = 255;
 			self.original[y][self.original.shape[1] - 1] = 255;
 
-		misc.imsave("test.png", self.original);
-
-		print(self.original);
+		# misc.imsave("test.png", self.original);
 
 
 
