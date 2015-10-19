@@ -376,7 +376,7 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 		for group in groups:
 			final.append(group.export());
 
-	sys.stdout.write('\r\t\t(thread finished) for row at ' + str(y_offset));
+	sys.stdout.write('\r\t\t(thread finished) for row at ' + str(y_offset) + '       ');
 	sys.stdout.flush();
 	return final;
 
