@@ -21,7 +21,7 @@ class Photochopper:
 		self.original = misc.imread(orig_image, flatten=True);
 		print("original shape = " + str(self.original.shape));
 
-		# create an array of zeroes to store which pixels we've already hit 
+		# create an array of zeroes to store which pixels we've already hit
 		self.hits = np.zeros(self.original.shape);
 
 		# create an array that'll hold the groups we've already identified
@@ -80,16 +80,18 @@ class Photochopper:
 		self.minimum_group_size = val;
 
 	def process(self):
+		print("supercontrasting...");
+		self.__supercontrast();
 		print("despeckling...");
 		self.__fast_despeckle();
 		print("done.");
 
 		if self.auto_align:
 			self.__auto_align_document();
-		
+
 		# store all the vertical ranges that have text on them
 		rows = [];
-		
+
 
 		print('extracting characters...');
 
@@ -100,7 +102,7 @@ class Photochopper:
 			active = False;
 			# do a first pass along the image to find ranges of row with stuff on them
 			for y in range(0, self.original.shape[0]):
-				
+
 				thisrow = False;
 				for x in range(0, self.original.shape[1]):
 					if self.original[y][x] < self.threshold:
@@ -167,7 +169,7 @@ class Photochopper:
 
 
 		if self.multiprocessing_enabled:
-			
+
 
 			# create a partial
 			processor = partial(process_row, self.threshold, self.diacritics_enabled, self.diagonal_connections, self.minimum_group_size);
@@ -213,7 +215,7 @@ class Photochopper:
 
 		os.mkdir('out/' + dir_name);
 		print('created directory out/' + dir_name);
-		
+
 		i = 0;
 		for group in self.groups:
 			misc.imsave('out/' + dir_name + '/' + str(i) + '.png', make_square(group));
@@ -245,18 +247,18 @@ class Photochopper:
 				to_delete.append(i);
 
 				throw_count += 1;
-		
+
 		for tdel in reversed(to_delete):
 			del points[tdel];
 
 		print('\tthrew out %d points outside .125 standard deviations (lb: %d, la: %d, stddev: %f, mean: %f)\n\tfinding linear regression...' % (throw_count, len(yvalues), len(points), stddev, mean));
 		yvalues = [i[0] * -1 for i in points];
 		xvalues = [i[1] for i in points];
-		
+
 
 
 		slope, intercept, r_value, p_value, std_err = stats.linregress(xvalues, y=yvalues);
-		
+
 		angle = math.asin(self.original.shape[0] * float(slope)/self.original.shape[0]);
 		print('\t\tangle: ' + str(angle) + ' (rvalue: ' + str(r_value) + ', slope: ' + str(slope) + ')');
 
@@ -267,7 +269,7 @@ class Photochopper:
 
 	def __fast_despeckle(self):
 		self.original = ndimage.binary_closing(self.original);
-		
+
 		self.original = np.multiply(self.original, 255);
 
 		self.original = self.original[1:];
@@ -277,7 +279,17 @@ class Photochopper:
 			self.original[y][0] = 255;
 			self.original[y][self.original.shape[1] - 1] = 255;
 
-		# misc.imsave("test.png", self.original);
+		misc.imsave("test.png", self.original);
+
+	def __supercontrast(self):
+		ocopy = np.zeros(self.original.shape);
+		for y in range(0, self.original.shape[0]):
+			for x in range(0, self.original.shape[1]):
+				ocopy[y][x] = 255 if self.original[y][x] > self.threshold else 0;
+
+		self.original = ocopy;
+
+		misc.imsave("test_supercontrast.png", ocopy);
 
 
 
@@ -304,13 +316,13 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 					# pixels to look at next
 					to_add = [];
 					for i in range(0, len(open_pixels)):
-						
+
 						pixel = open_pixels[i];
 						# there should be a better way of doing this
 						orig = original[y][x];
 						group.set(pixel.y, pixel.x, orig);
 
-						
+
 
 						# search around the pixel
 						for sy in range(-1, 2):
@@ -326,7 +338,7 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 
 								except:
 									pass; # shhhhh... it's okay.
-						
+
 					open_pixels = to_add;
 					if len(open_pixels) == 0:
 						break;
@@ -357,7 +369,7 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 			if addedMultipart:
 				addedMultipart = False;
 				continue;
-			
+
 			# TODO: make this combine diacretics as well
 			r1 = groups[i].get_shape();
 			r2 = groups[i + 1].get_shape();
@@ -499,7 +511,7 @@ if __name__ == "__main__":
 	parser.add_argument('--disable-multiprocessing', action='store_false', required=False, help="disable multiprocessing.");
 	parser.add_argument('--row-despeckle-size', type=int, required=False, help="despeckler size for row chopping");
 	parser.add_argument('--minimum-group-size', type=int, required=False, help="minimum pixel group size");
-	opts = parser.parse_args(); 
+	opts = parser.parse_args();
 
 	dicer = Photochopper(opts.filename, 200);
 	if opts.max_subprocesses != None:
