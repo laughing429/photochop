@@ -48,6 +48,12 @@ class Photochopper:
 		# set minimum group size
 		self.minimum_group_size = 5;
 
+		# enable despeckling
+		self.despeckle_enabled = False;
+
+		# enable supercontrasting
+		self.supercontrasting_enabled = False;
+
 		# set the threadcount
 		try:
 			self.threadcount = cpu_count();
@@ -79,12 +85,20 @@ class Photochopper:
 	def set_minimum_group_size(self, val):
 		self.minimum_group_size = val;
 
+	def enable_supercontrasting(self, val):
+		self.supercontrasting_enabled = val;
+
+	def enable_despeckling(self, val):
+		self.despeckle_enabled = val;
+
 	def process(self):
-		print("supercontrasting...");
-		self.__supercontrast();
-		print("despeckling...");
-		self.__fast_despeckle();
-		print("done.");
+		if self.supercontrasting_enabled:
+			print("supercontrasting...");
+			self.__supercontrast();
+
+		if self.despeckle_enabled:
+			print("despeckling...");
+			self.__fast_despeckle();
 
 		if self.auto_align:
 			self.__auto_align_document();
@@ -511,6 +525,8 @@ if __name__ == "__main__":
 	parser.add_argument('--disable-multiprocessing', action='store_false', required=False, help="disable multiprocessing.");
 	parser.add_argument('--row-despeckle-size', type=int, required=False, help="despeckler size for row chopping");
 	parser.add_argument('--minimum-group-size', type=int, required=False, help="minimum pixel group size");
+	parser.add_argument('--despeckle', action='store_true', required=False, help="despeckle the document.");
+	parser.add_argument('--supercontrast', action='store_true', required=False, help="supercontrast the image. can help mitigate compression artifacts.");
 	opts = parser.parse_args();
 
 	dicer = Photochopper(opts.filename, 200);
@@ -530,6 +546,8 @@ if __name__ == "__main__":
 	dicer.enable_diacritics(opts.disable_diacritics);
 	dicer.enable_auto_align(opts.auto_align);
 	dicer.enable_multiprocessing(opts.disable_multiprocessing);
+	dicer.enable_supercontrasting(opts.supercontrast);
+	dicer.enable_despeckling(opts.despeckle);
 
 	start_time = time.clock();
 	dicer.process();
