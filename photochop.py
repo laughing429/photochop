@@ -54,6 +54,9 @@ class Photochopper:
 		# enable supercontrasting
 		self.supercontrasting_enabled = False;
 
+		# disable smoothing
+		self.smoothing = 0;
+
 		# set the threadcount
 		try:
 			self.threadcount = cpu_count();
@@ -90,6 +93,9 @@ class Photochopper:
 
 	def enable_despeckling(self, val):
 		self.despeckle_enabled = val;
+
+	def set_smoothing_reps(self, val):
+		self.smoothing = val;
 
 	def process(self):
 		if self.supercontrasting_enabled:
@@ -232,7 +238,7 @@ class Photochopper:
 
 		i = 0;
 		for group in self.groups:
-			misc.imsave('out/' + dir_name + '/' + str(i) + '.png', make_square(group));
+			misc.imsave('out/' + dir_name + '/' + str(i) + '.png', make_square(self.__smooth_group(group)));
 			i += 1;
 		print('saved all groups');
 
@@ -305,6 +311,16 @@ class Photochopper:
 
 		misc.imsave("test_supercontrast.png", ocopy);
 
+	def __smooth_group(self, arr):
+		for i in range(0, self.smoothing):
+			arr = misc.imfilter(arr, 'smooth');
+			
+			#arr = ndimage.filters.gaussian_filter(deepcopy(arr), 5, cval=255);
+			for y in range(0, arr.shape[0]):
+				for x in range(0, arr.shape[1]):
+					arr[y][x] = 255 if arr[y][x] > self.threshold else 0;
+
+		return arr;
 
 
 # this is because of multithreading
@@ -527,6 +543,7 @@ if __name__ == "__main__":
 	parser.add_argument('--minimum-group-size', type=int, required=False, help="minimum pixel group size");
 	parser.add_argument('--despeckle', action='store_true', required=False, help="despeckle the document.");
 	parser.add_argument('--supercontrast', action='store_true', required=False, help="supercontrast the image. can help mitigate compression artifacts.");
+	parser.add_argument('--smoothing-passes', type=int, required=False, help="number of smoothing steps in post processing");
 	opts = parser.parse_args();
 
 	dicer = Photochopper(opts.filename, 200);
@@ -541,6 +558,9 @@ if __name__ == "__main__":
 
 	if opts.row_despeckle_size != None:
 		dicer.set_row_despeckle_size(opts.row_despeckle_size);
+
+	if opts.smoothing_passes != None:
+		dicer.set_smoothing_reps(opts.smoothing_passes);
 
 	dicer.enable_diagonals(opts.allow_diagonal_connections);
 	dicer.enable_diacritics(opts.disable_diacritics);
