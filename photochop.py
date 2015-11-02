@@ -109,9 +109,72 @@ class Photochopper:
 
 		print('extracting characters...');
 
+
+		for y in range(self.original.shape[0]):
+			for x in range(self.original.shape[1]):
+				self.original[y][x] = not self.original[y][x];
+
+		lbls, nlbls = ndimage.measurements.label(self.original);
+		print('\tnumber of characters:' + str(nlbls));
+		all_labels = range(0, nlbls + 1);
+		print('\tcreating groups...');
+
+		seen = {};
+		for y in range(lbls.shape[0]):
+			for x in range(lbls.shape[1]):
+				curr = lbls[y][x];
+				if not curr in seen:
+					seen[curr] = [];
+				seen[curr].append((y,x));
+
+		import json;
+
+		seen2 = {};
+		for key in seen:
+			print "%d: %d" % (key, len(seen[key]))
+
+		misc.imsave("test2.png", np.multiply(lbls, 255.0/float(nlbls)));
+
+		# grps = [np.column_stack(np.where(lbls == x)) for x in all_labels];
+		print('\tprocessing groups');
+		groups = [];
+		for key in seen:
+			groups.append(_SparseArray());
+			groups[-1].arr = seen[key];
+		print('\tprocessed groups');
+		
+		
+
+		row_flags = np.zeros([self.original.shape[0]]);
+		for group in groups:
+			bpoints = group.get_shape();
+			print(bpoints);
+			for i in range(bpoints[0], bpoints[2]):
+				print('incrementing row_flags[' + str(i) + '] from ' + str(row_flags[i]) + ' to ' + str(row_flags[i] + 1));
+				row_flags[i] += 1;
+				print('\trow_flags[' + str(i) + ']: ' + str(row_flags[i]));
+
+		for row in row_flags:
+			sys.stdout.write(str(int(row)) + " ");
+		print('\n');
+
+
+		self.groups = [group.export() for group in groups];
+		print('primed for export');
+
+		import csv
+
+		with open('rowflags.csv', 'w') as f:
+			writer = csv.writer(f, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL);
+			for row in row_flags:
+				writer.writerow([int(row)]);
+
+		return;
+
 		print('\tgrabbing rows...');
 
 		if not self.multiprocessing_enabled:
+			ocopy = deepcopy(self.original);
 			current = [0,0];
 			active = False;
 			# do a first pass along the image to find ranges of row with stuff on them
@@ -119,6 +182,8 @@ class Photochopper:
 
 				thisrow = False;
 				for x in range(0, self.original.shape[1]):
+					ocopy[y][x] = (self.threshold + 5) if self.original[y][x] > self.threshold else self.original[y][x];
+
 					if self.original[y][x] < self.threshold:
 						thisrow = True;
 						break;
@@ -141,6 +206,8 @@ class Photochopper:
 				sys.stdout.write('\r\t\tfound a range from Y:%6d to Y:%6d' % (current[0], current[1]));
 				sys.stdout.flush();
 				rows.append(deepcopy(current));
+
+			misc.imsave('test_rowfind.png', ocopy);
 		else:
 			# create the thread pool
 			threads = Pool(self.threadcount);
@@ -182,6 +249,11 @@ class Photochopper:
 			slices.append((self.original[row[0]:row[1]], row[0]));
 
 
+		print('\thighlighting rows...');
+		#self.__highlight_rows(rows);
+		print('\t\tdone.');
+
+
 		if self.multiprocessing_enabled:
 
 
@@ -199,6 +271,8 @@ class Photochopper:
 			self.groups += x;
 		print('\n\tdone processing.');
 
+
+
 	def export_groups(self, dir_name):
 		if not os.path.exists('out'):
 			os.mkdir('out');
@@ -207,17 +281,19 @@ class Photochopper:
 		# make the final output square
 		def make_square(grp):
 			# figure out the final size of the matrix and fill it with zeroes
-			final_size = max(grp.shape[0], grp.shape[1]);
+			final_orig = max(grp.shape[0], grp.shape[1]);
+			final_size = float(final_orig if (final_orig % 2) == 0 else final_orig + 1);
 			final = np.zeros((final_size, final_size));
 			final.fill(255);
 
 			# starting position (where to start writing the matrix)
 			starting = [0,0];
-			if final_size == grp.shape[0]:
-				starting[1] = (final_size/2) - (grp.shape[1]/2);
+			if final_orig == grp.shape[0]:
+				starting[1] = (final_orig/2) - (grp.shape[1]/2);
 			else:
-				starting[0] = (final_size/2) - (grp.shape[0]/2);
+				starting[0] = (final_orig/2) - (grp.shape[0]/2);
 
+			#print('starting pos: ' + str(starting) + (' (corrected)' if final_orig == final_size else ''));
 
 			# write the matrix
 			for y in range(0, grp.shape[0]):
@@ -232,8 +308,10 @@ class Photochopper:
 
 		i = 0;
 		for group in self.groups:
-			misc.imsave('out/' + dir_name + '/' + str(i) + '.png', make_square(group));
+			#print("working on group " + str(i));
+			misc.imsave('out/%s/%06d.png' % (dir_name, i), group);
 			i += 1;
+
 		print('saved all groups');
 
 	def __auto_align_document(self):
@@ -305,7 +383,17 @@ class Photochopper:
 
 		misc.imsave("test_supercontrast.png", ocopy);
 
+	def __highlight_rows(self, rows):
+		for row in rows:
+			for y in range(row[0], row[1]):
+				for x in range(0, self.original.shape[1]):
+					self.original[y][x] = (self.threshold + 5) if self.original[y][x] > self.threshold else self.original[y][x];
 
+		misc.imsave("test_rows.png", self.original);
+
+
+def process_groupdata():
+	pass
 
 # this is because of multithreading
 def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_size, original):
@@ -315,59 +403,64 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 	original = original[0];
 	hits = np.zeros(original.shape);
 
-	# look for connected pixels
-	for x in range(0, original.shape[1]):
-		for y in range(0, original.shape[0]):
-			if original[y][x] < threshold and hits[y][x] == 0:
-				# (re)create a sparse array
-				group = _SparseArray();
-				# make sure we look around the origin point
-#				group.set(y,x,-1);
+#	look for connected pixels
+#     """
+# 	for x in range(0, original.shape[1]):
+# 		for y in range(0, original.shape[0]):		
+# 			if original[y][x] < threshold and hits[y][x] == 0:
+# 				# (re)create a sparse array
+# 				group = _SparseArray();
+# 				# make sure we look around the origin point
+# #				group.set(y,x,-1);
 
-				open_pixels = [_Pixel(y,x,-1)];
-				# this should be better but it isn't
-				while True:
-					# pixels to look at next
-					to_add = [];
-					for i in range(0, len(open_pixels)):
+# 				open_pixels = [_Pixel(y,x,-1)];
+# 				# this should be better but it isn't
+# 				while True:
+# 					# pixels to look at next
+# 					to_add = [];
+# 					for i in range(0, len(open_pixels)):
 
-						pixel = open_pixels[i];
-						# there should be a better way of doing this
-						orig = original[y][x];
-						group.set(pixel.y, pixel.x, orig);
+# 						pixel = open_pixels[i];
+# 						# there should be a better way of doing this
+# 						orig = original[y][x];
+# 						group.set(pixel.y, pixel.x, orig);
 
 
 
-						# search around the pixel
-						for sy in range(-1, 2):
-							for sx in range(-1, 2):
-								if abs(sx) + abs(sy) == 2 and not enable_diagonals:
-									continue;
-								try:
-									# and group.get(pixel.y + sy, pixel.x + sx) == None
-									if original[pixel.y + sy][pixel.x + sx] < threshold and hits[pixel.y + sy][pixel.x + sx] == 0:
-										#group.set(pixel.y + sy, pixel.x + sx, -1);
-										to_add.append(_Pixel(pixel.y + sy, pixel.x + sx, -1));
-										hits[pixel.y + sy][pixel.x + sx] = 1;
+# 						# search around the pixel
+# 						for sy in range(-1, 2):
+# 							for sx in range(-1, 2):
+# 								if abs(sx) + abs(sy) == 2 and not enable_diagonals:
+# 									continue;
+# 								try:
+# 									# and group.get(pixel.y + sy, pixel.x + sx) == None
+# 									if original[pixel.y + sy][pixel.x + sx] < threshold and hits[pixel.y + sy][pixel.x + sx] == 0:
+# 										#group.set(pixel.y + sy, pixel.x + sx, -1);
+# 										to_add.append(_Pixel(pixel.y + sy, pixel.x + sx, -1));
+# 										hits[pixel.y + sy][pixel.x + sx] = 1;
 
-								except:
-									pass; # shhhhh... it's okay.
+# 								except:
+# 									pass; # shhhhh... it's okay.
 
-					open_pixels = to_add;
-					if len(open_pixels) == 0:
-						break;
+# 					open_pixels = to_add;
+# 					if len(open_pixels) == 0:
+# 						break;
 
-				# set the pixels we've hit into the hit group
-				for pxl in group.arr:
-					hits[pxl.y][pxl.x] = 1;
+# 				# set the pixels we've hit into the hit group
+# 				for pxl in group.arr:
+# 					hits[pxl.y][pxl.x] = 1;
 
-				points = group.get_bounding_points();
-				points[0][0] += y_offset;
-				points[1][0] += y_offset;
-				# brag a little bit
-				#sys.stdout.write('\r\t\tidentified a group of %6d pixels spanning from %s to %s         ' % (len(group.arr), points[0], points[1]));
-				#sys.stdout.flush();
-				groups.append(deepcopy(group));
+# 				points = group.get_bounding_points();
+# 				points[0][0] += y_offset;
+# 				points[1][0] += y_offset;
+# 				# brag a little bit
+# 				#sys.stdout.write('\r\t\tidentified a group of %6d pixels spanning from %s to %s         ' % (len(group.arr), points[0], points[1]));
+# 				#sys.stdout.flush();
+# 				groups.append(deepcopy(group));"""
+
+	# pls work
+	lbl, nlbls = ndimage.measurements.label(original);
+	print('number of distinct groups: nlbls');
 
 	# remove smaller groups
 	passed_groups = [];
@@ -387,10 +480,14 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 			# TODO: make this combine diacretics as well
 			r1 = groups[i].get_shape();
 			r2 = groups[i + 1].get_shape();
+			max_distance = float((r1[3] - r1[1]) + (r2[3] - r2[1]));
+			distance = float(max(r1[3], r2[3]) - min(r1[1], r2[1]));
 			r1 = set(range(r1[1], r1[3]));
 			r2 = set(range(r2[1], r2[3]));
+			
+			print('distance: ' + str(distance) + '\tmax_distance: ' + str(max_distance) + '\tscore: ' + str(distance/max_distance));
 
-			if len(r1.intersection(r2)) != 0:
+			if len(r1.intersection(r2)) > 0 and (distance/max_distance) < .85:
 				group = _SparseArray();
 				group.integrate(groups[i]);
 				group.integrate(groups[i + 1]);
@@ -398,11 +495,12 @@ def process_row(threshold, enable_diacritics, enable_diagonals, minimum_group_si
 				addedMultipart = True;
 			else:
 				final.append(groups[i].export());
+		final.append(groups[len(groups) - 1].export());
 	else:
 		for group in groups:
 			final.append(group.export());
 
-	sys.stdout.write('\r\t\t(thread finished) for row at ' + str(y_offset) + '       ');
+#	sys.stdout.write('\r\t\t(thread finished) for row at ' + str(y_offset) + '       ');
 	sys.stdout.flush();
 	return final;
 
@@ -442,47 +540,30 @@ class _SparseArray():
 	# gets a specific pixel
 	def get(self, y, x):
 		for pixel in self.arr:
-			if pixel.y == y and pixel.x == x:
-				return pixel.val;
-		return None;
+			if pixel[0] == y and pixel[1] == x:
+				return True;
+		return False;
 
 	# sets a pixel
-	def set(self, y, x, val):
-		self.arr.append(_Pixel(y, x, val));
-#		return None;
-
-	# gets a list of all pixels with a specific value
-	def get_all_of(self, val):
-		out = [];
-		for pixel in self.arr:
-			if pixel.val == val:
-				out.append(pixel);
-		return out;
-
-	# check if the array contains a value
-	def contains(self, val):
-		out = False;
-		for pixel in self.arr:
-			if pixel.val == val:
-				out = True;
-		return out;
+	def set(self, y, x):
+		self.arr.append([y,x]);
 
 	# gets the min y, min x, max y, and max x of the array
 	def get_shape(self):
-		lowest_x = self.arr[0].x;
-		highest_x = self.arr[0].x;
-		lowest_y = self.arr[0].y;
-		highest_y = self.arr[0].y;
+		lowest_x = self.arr[0][1];
+		highest_x = self.arr[0][1];
+		lowest_y = self.arr[0][0];
+		highest_y = self.arr[0][0];
 
 		for pixel in self.arr:
-			if pixel.x < lowest_x:
-				lowest_x = pixel.x;
-			if pixel.x > highest_x:
-				highest_x = pixel.x;
-			if pixel.y < lowest_y:
-				lowest_y = pixel.y;
-			if pixel.y > highest_y:
-				highest_y = pixel.y;
+			if pixel[1] < lowest_x:
+				lowest_x = pixel[1];
+			if pixel[1] > highest_x:
+				highest_x = pixel[1];
+			if pixel[0] < lowest_y:
+				lowest_y = pixel[0];
+			if pixel[0] > highest_y:
+				highest_y = pixel[0];
 
 		return (lowest_y, lowest_x, highest_y, highest_x);
 
@@ -501,7 +582,7 @@ class _SparseArray():
 		export.fill(255);
 
 		for pixel in self.arr:
-			export[pixel.y - shape[0]][pixel.x - shape[1]] = pixel.val;
+			export[pixel[0] - shape[0]][pixel[1] - shape[1]] = 0;
 
 		return export;
 
@@ -511,7 +592,7 @@ class _SparseArray():
 	# assimilate another sparse array into itself
 	def integrate(self, group):
 		for pixel in group.arr:
-			self.set(pixel.y, pixel.x, pixel.val);
+			self.set(pixel[0], pixel[1]);
 
 if __name__ == "__main__":
 	import argparse
