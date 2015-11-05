@@ -54,6 +54,9 @@ class Photochopper:
 		# enable supercontrasting
 		self.supercontrasting_enabled = False;
 
+		# min groups per row
+		self.min_groups_per_row = 5;
+
 		# set the threadcount
 		try:
 			self.threadcount = cpu_count();
@@ -91,6 +94,9 @@ class Photochopper:
 	def enable_despeckling(self, val):
 		self.despeckle_enabled = val;
 
+	def set_min_groups_per_row(self, val):
+		self.min_groups_per_row = val;
+
 	def process(self):
 		if self.supercontrasting_enabled:
 			print("supercontrasting...");
@@ -102,9 +108,6 @@ class Photochopper:
 
 		if self.auto_align:
 			self.__auto_align_document();
-
-		# store all the vertical ranges that have text on them
-		rows = [];
 
 
 		print('extracting characters...');
@@ -127,8 +130,6 @@ class Photochopper:
 					seen[curr] = [];
 				seen[curr].append((y,x));
 
-		import json;
-
 		seen2 = {};
 		for key in seen:
 			print "%d: %d" % (key, len(seen[key]))
@@ -150,16 +151,73 @@ class Photochopper:
 			bpoints = group.get_shape();
 			print(bpoints);
 			for i in range(bpoints[0], bpoints[2]):
-				print('incrementing row_flags[' + str(i) + '] from ' + str(row_flags[i]) + ' to ' + str(row_flags[i] + 1));
+				# print('incrementing row_flags[' + str(i) + '] from ' + str(row_flags[i]) + ' to ' + str(row_flags[i] + 1));
 				row_flags[i] += 1;
-				print('\trow_flags[' + str(i) + ']: ' + str(row_flags[i]));
-
-		for row in row_flags:
-			sys.stdout.write(str(int(row)) + " ");
-		print('\n');
+				# print('\trow_flags[' + str(i) + ']: ' + str(row_flags[i]));
 
 
-		self.groups = [group.export() for group in groups];
+		rows = []; curr = False; start = 0;
+		for i in range(0, len(row_flags)):
+			if not curr and row_flags[i] > self.min_groups_per_row:
+				curr = True;
+				start = i;
+			elif curr and row_flags[i] <= self.min_groups_per_row:
+				rows.append((start, i));
+				curr = False;
+			sys.stdout.write(str(int(row_flags[i])) + " ");
+		print('\n\nrows:');
+
+		for row in rows:
+			sys.stdout.write(str(row) + " ");
+
+
+		print('\ngenerating group lists from regions...');
+		regions = {};
+		for i in range(0, len(rows)):
+			regions[i] = [];
+
+		for grp in groups:
+			bpoints = grp.get_shape();
+			sys.stdout.write(str(bpoints) + " ");
+			cset = set(range(bpoints[0], bpoints[2]));
+			for i in range(0, len(rows)):
+				row = rows[i];
+				if cset.intersection(set(range(row[0], row[1]))):
+					regions[i].append(grp);
+
+
+		print('combining diacritics...');
+
+		final = [];
+		for key in regions:
+			addedMultipart = False;
+			for i in range(0, len(regions[key]) - 1):
+				if addedMultipart:
+					addedMultipart = False;
+					continue;
+
+				# TODO: make this combine diacretics as well
+				r1 = regions[key][i].get_shape();
+				r2 = regions[key][i + 1].get_shape();
+				max_distance = float((r1[3] - r1[1]) + (r2[3] - r2[1]));
+				distance = float(max(r1[3], r2[3]) - min(r1[1], r2[1]));
+				r1 = set(range(r1[1], r1[3]));
+				r2 = set(range(r2[1], r2[3]));
+				
+				#print('distance: ' + str(distance) + '\tmax_distance: ' + str(max_distance) + '\tscore: ' + str(distance/max_distance));
+
+				if len(r1.intersection(r2)) > 0 and (distance/max_distance) < .85:
+					group = _SparseArray();
+					group.integrate(regions[key][i]);
+					group.integrate(regions[key][i + 1]);
+					final.append(group.export());
+					addedMultipart = True;
+				else:
+					final.append(regions[key][i].export());
+
+
+		print('done combining.\nexporting...');
+		self.groups = final;
 		print('primed for export');
 
 		import csv
@@ -170,6 +228,10 @@ class Photochopper:
 				writer.writerow([int(row)]);
 
 		return;
+
+
+
+
 
 		print('\tgrabbing rows...');
 
@@ -608,6 +670,7 @@ if __name__ == "__main__":
 	parser.add_argument('--minimum-group-size', type=int, required=False, help="minimum pixel group size");
 	parser.add_argument('--despeckle', action='store_true', required=False, help="despeckle the document.");
 	parser.add_argument('--supercontrast', action='store_true', required=False, help="supercontrast the image. can help mitigate compression artifacts.");
+	parser.add_argument('--min-groups-per-row', required=False, help="minimum groups per row");
 	opts = parser.parse_args();
 
 	dicer = Photochopper(opts.filename, 200);
@@ -622,6 +685,9 @@ if __name__ == "__main__":
 
 	if opts.row_despeckle_size != None:
 		dicer.set_row_despeckle_size(opts.row_despeckle_size);
+
+	if opts.min_groups_per_row != None:
+		decer.set
 
 	dicer.enable_diagonals(opts.allow_diagonal_connections);
 	dicer.enable_diacritics(opts.disable_diacritics);
