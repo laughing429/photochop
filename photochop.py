@@ -143,7 +143,7 @@ class Photochopper:
 			groups.append(_SparseArray());
 			groups[-1].arr = seen[key];
 		print('\tprocessed groups');
-		
+		groups = groups[1:];
 		
 
 		row_flags = np.zeros([self.original.shape[0]]);
