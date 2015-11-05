@@ -111,37 +111,40 @@ class Photochopper:
 
 	def process(self):
 		
-
+		# despeckle if enabled
 		if self.despeckle_enabled:
 			print("despeckling...");
 			self.__fast_despeckle();
 
+		# pre smooth if enabled
 		if self.pre_smooth:
 			print("pre-smoothing...");
 			self.original = self.__smooth_group(self.original);
 
+		# supercontrast if enabled
 		if self.supercontrasting_enabled:
 			print("supercontrasting...");
 			self.__supercontrast();
 
+		# autoalign if enabled
 		if self.auto_align:
 			self.__auto_align_document();
 
-
-		misc.imsave('test3.png', self.original);
-
 		print('extracting characters...');
 
-
+		# invert the image - makes rowfinding work properly
 		for y in range(self.original.shape[0]):
 			for x in range(self.original.shape[1]):
 				self.original[y][x] = not self.original[y][x];
 
+		# label the original image - each group has a unique label
 		lbls, nlbls = ndimage.measurements.label(self.original);
+
 		print('\tnumber of characters:' + str(nlbls));
-		all_labels = range(0, nlbls + 1);
 		print('\tcreating groups...');
 
+
+		# collect the points from each label
 		seen = {};
 		for y in range(lbls.shape[0]):
 			for x in range(lbls.shape[1]):
@@ -150,14 +153,12 @@ class Photochopper:
 					seen[curr] = [];
 				seen[curr].append((y,x));
 
-		seen2 = {};
-		for key in seen:
-			sys.stdout.write(str(key) + "\t");
-		#	print "%d: %d" % (key, len(seen[key]))
+		# dump an image representation of the tagged file
+		# misc.imsave("test2.png", np.multiply(lbls, 255.0/float(nlbls)));
 
-		misc.imsave("test2.png", np.multiply(lbls, 255.0/float(nlbls)));
 
-		# grps = [np.column_stack(np.where(lbls == x)) for x in all_labels];
+		# convert the points we collected earlier into sparse array objects for 
+		# more complex processing 
 		print('\tprocessing groups');
 		groups = [];
 		for key in seen:
@@ -169,16 +170,18 @@ class Photochopper:
 		
 		
 
+		# create a array to store the number of characters in each row
 		row_flags = np.zeros([self.original.shape[0]]);
+
+		# determine the number of groups a particular y-value intersects
 		for group in groups:
 			bpoints = group.get_shape();
 			print(bpoints);
 			for i in range(bpoints[0], bpoints[2]):
-				# print('incrementing row_flags[' + str(i) + '] from ' + str(row_flags[i]) + ' to ' + str(row_flags[i] + 1));
 				row_flags[i] += 1;
-				# print('\trow_flags[' + str(i) + ']: ' + str(row_flags[i]));
 
 
+		# generate row definitions from the flags we collected earlier
 		rows = []; curr = False; start = 0;
 		for i in range(0, len(row_flags)):
 			if not curr and row_flags[i] > self.min_groups_per_row:
@@ -188,33 +191,43 @@ class Photochopper:
 				rows.append((start, i));
 				curr = False;
 			sys.stdout.write(str(int(row_flags[i])) + " ");
-		print('\n\nrows:');
 
-		for row in rows:
-			sys.stdout.write(str(row) + " ");
+		# dump the rows we found onto stdout
+		# print('\n\nrows:');
+		# for row in rows:
+		# 	sys.stdout.write(str(row) + " ");
 
 
+		# what the print says
 		print('\ngenerating group lists from regions...');
+
+		# preinitializing the regions
 		regions = {};
 		for i in range(0, len(rows)):
 			regions[i] = [];
 
+		# figuring out which groups fit into which regions
 		for grp in groups:
 			bpoints = grp.get_shape();
 			#sys.stdout.write(str(bpoints) + " ");
 			cset = set(range(bpoints[0], bpoints[2]));
 			for i in range(0, len(rows)):
 				row = rows[i];
+				# if the group intersects the row and the group is over the minimum size then append it to
+				# the region currently being analysed
 				if cset.intersection(set(range(row[0], row[1]))) and grp.size() > self.minimum_group_size:
 					regions[i].append(grp);
 
+		# sort groups
 		print('sorting groups within regions...');
 		for key in regions:
+			# sort by lowest x-value
 			print('groups in region ' + str(key) + ': ' + str(len(regions[key])))
 			regions[key] = sorted(regions[key], key=lambda g: g.get_shape()[1]);
 
 		print('combining diacritics...');
 
+		# combine diacritics
 		final = [];
 		for key in regions:
 			addedMultipart = False;
@@ -223,7 +236,7 @@ class Photochopper:
 					addedMultipart = False;
 					continue;
 
-				# TODO: make this combine diacretics as well
+				# black magic
 				r1 = regions[key][i].get_shape();
 				r2 = regions[key][i + 1].get_shape();
 				max_distance = float((r1[3] - r1[1]) + (r2[3] - r2[1]));
@@ -249,6 +262,7 @@ class Photochopper:
 		self.groups = final;
 		print('primed for export');
 
+		# dumping data into a csv
 		import csv
 
 		with open('rowflags.csv', 'w') as f:
