@@ -57,6 +57,12 @@ class Photochopper:
 		# min groups per row
 		self.min_groups_per_row = 5;
 
+		# enable pre-smoothing
+		self.pre_smooth = False;
+
+		# smoothing passes
+		self.smoothing = 1;
+
 		# set the threadcount
 		try:
 			self.threadcount = cpu_count();
@@ -97,18 +103,32 @@ class Photochopper:
 	def set_min_groups_per_row(self, val):
 		self.min_groups_per_row = val;
 
+	def enable_pre_smoothing(self, val):
+		self.pre_smooth = val;
+
+	def set_smoothing_passes(self, val):
+		self.smoothing = val;
+
 	def process(self):
-		if self.supercontrasting_enabled:
-			print("supercontrasting...");
-			self.__supercontrast();
+		
 
 		if self.despeckle_enabled:
 			print("despeckling...");
 			self.__fast_despeckle();
 
+		if self.pre_smooth:
+			print("pre-smoothing...");
+			self.original = self.__smooth_group(self.original);
+
+		if self.supercontrasting_enabled:
+			print("supercontrasting...");
+			self.__supercontrast();
+
 		if self.auto_align:
 			self.__auto_align_document();
 
+
+		misc.imsave('test3.png', self.original);
 
 		print('extracting characters...');
 
@@ -132,7 +152,8 @@ class Photochopper:
 
 		seen2 = {};
 		for key in seen:
-			print "%d: %d" % (key, len(seen[key]))
+			sys.stdout.write(str(key) + "\t");
+		#	print "%d: %d" % (key, len(seen[key]))
 
 		misc.imsave("test2.png", np.multiply(lbls, 255.0/float(nlbls)));
 
@@ -140,10 +161,12 @@ class Photochopper:
 		print('\tprocessing groups');
 		groups = [];
 		for key in seen:
+			sys.stdout.write(str(key) + " ");
 			groups.append(_SparseArray());
 			groups[-1].arr = seen[key];
 		print('\tprocessed groups');
 		groups = groups[1:];
+		
 		
 
 		row_flags = np.zeros([self.original.shape[0]]);
@@ -178,13 +201,17 @@ class Photochopper:
 
 		for grp in groups:
 			bpoints = grp.get_shape();
-			sys.stdout.write(str(bpoints) + " ");
+			#sys.stdout.write(str(bpoints) + " ");
 			cset = set(range(bpoints[0], bpoints[2]));
 			for i in range(0, len(rows)):
 				row = rows[i];
-				if cset.intersection(set(range(row[0], row[1]))):
+				if cset.intersection(set(range(row[0], row[1]))) and grp.size() > self.minimum_group_size:
 					regions[i].append(grp);
 
+		print('sorting groups within regions...');
+		for key in regions:
+			print('groups in region ' + str(key) + ': ' + str(len(regions[key])))
+			regions[key] = sorted(regions[key], key=lambda g: g.get_shape()[1]);
 
 		print('combining diacritics...');
 
@@ -205,8 +232,8 @@ class Photochopper:
 				r2 = set(range(r2[1], r2[3]));
 				
 				#print('distance: ' + str(distance) + '\tmax_distance: ' + str(max_distance) + '\tscore: ' + str(distance/max_distance));
-
-				if len(r1.intersection(r2)) > 0 and (distance/max_distance) < .85:
+				#  and (distance/max_distance) < .85
+				if len(r1.intersection(r2)) > 0:
 					group = _SparseArray();
 					group.integrate(regions[key][i]);
 					group.integrate(regions[key][i + 1]);
@@ -214,6 +241,8 @@ class Photochopper:
 					addedMultipart = True;
 				else:
 					final.append(regions[key][i].export());
+
+
 
 
 		print('done combining.\nexporting...');
@@ -446,12 +475,45 @@ class Photochopper:
 		misc.imsave("test_supercontrast.png", ocopy);
 
 	def __highlight_rows(self, rows):
+		print("number of rows to be highlighted: " + str(len(rows)));
+		print("rows: " + str(rows));
+
+		self.original = np.multiply(self.original, 255);
+
 		for row in rows:
+			print("\tprocessing row " + str(row));
 			for y in range(row[0], row[1]):
 				for x in range(0, self.original.shape[1]):
 					self.original[y][x] = (self.threshold + 5) if self.original[y][x] > self.threshold else self.original[y][x];
 
 		misc.imsave("test_rows.png", self.original);
+
+	def __highlight_bpoints(self, groups):
+
+		for i in range(0, len(groups)):
+			group = groups[i];
+			sys.stdout.write(str(i) + "(" + str(group.size()) + ")[" + str(group.get_bounding_points()) + "\t");
+			sys.stdout.flush();
+			shape = group.get_shape();
+			for x in range(shape[1], shape[3]):
+				self.original[shape[0]][x] = 0;
+				self.original[shape[2]][x] = 0;
+			for y in range(shape[0], shape[2]):
+				self.original[y][shape[1]] = 0;
+				self.original[y][shape[3]] = 0;
+
+		misc.imsave("test_groups.png", self.original);
+
+	def __smooth_group(self, arr):
+		for i in range(0, self.smoothing):
+			arr = misc.imfilter(arr, 'smooth');
+			
+			#arr = ndimage.filters.gaussian_filter(deepcopy(arr), 5, cval=255);
+			for y in range(0, arr.shape[0]):
+				for x in range(0, arr.shape[1]):
+					arr[y][x] = 255 if arr[y][x] > self.threshold else 0;
+
+		return arr;
 
 
 def process_groupdata():
@@ -671,23 +733,28 @@ if __name__ == "__main__":
 	parser.add_argument('--despeckle', action='store_true', required=False, help="despeckle the document.");
 	parser.add_argument('--supercontrast', action='store_true', required=False, help="supercontrast the image. can help mitigate compression artifacts.");
 	parser.add_argument('--min-groups-per-row', required=False, help="minimum groups per row");
+	parser.add_argument('--pre-smooth', required=False, action='store_true', help="smooth original document before processing");
+	parser.add_argument('--smoothing-passes', required=False, type=int, help="number of smoothing passes to make");
 	opts = parser.parse_args();
 
 	dicer = Photochopper(opts.filename, 200);
-	if opts.max_subprocesses != None:
+	if opts.max_subprocesses is not None:
 		dicer.set_max_threads(opts.max_subprocesses);
 
-	if opts.set_threshold_to != None:
+	if opts.set_threshold_to is not None:
 		dicer.set_threshold(opts.set_threshold_to);
 
-	if opts.minimum_group_size != None:
+	if opts.minimum_group_size is not None:
 		dicer.set_minimum_group_size(opts.minimum_group_size);
 
-	if opts.row_despeckle_size != None:
+	if opts.row_despeckle_size is not None:
 		dicer.set_row_despeckle_size(opts.row_despeckle_size);
 
-	if opts.min_groups_per_row != None:
-		decer.set
+	if opts.min_groups_per_row is not None:
+		dicer.set_min_groups_per_row(opts.min_groups_per_row);
+
+	if opts.smoothing_passes is not None:
+		dicer.set_smoothing_passes(opts.smoothing_passes);
 
 	dicer.enable_diagonals(opts.allow_diagonal_connections);
 	dicer.enable_diacritics(opts.disable_diacritics);
@@ -695,6 +762,7 @@ if __name__ == "__main__":
 	dicer.enable_multiprocessing(opts.disable_multiprocessing);
 	dicer.enable_supercontrasting(opts.supercontrast);
 	dicer.enable_despeckling(opts.despeckle);
+	dicer.enable_pre_smoothing(opts.pre_smooth);
 
 	start_time = time.clock();
 	dicer.process();
