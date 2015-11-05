@@ -273,9 +273,8 @@ class Photochopper:
 		return;
 
 
-	def export_groups(self, dir_name):
-		if not os.path.exists('out'):
-			os.mkdir('out');
+	def export_groups(self):
+		
 
 
 		# make the final output square
@@ -302,12 +301,19 @@ class Photochopper:
 
 			return final;
 
+		self.final = [make_square(grp) for grp in self.groups];
+
+
+
+	def write_out(self, dir_name):
+		if not os.path.exists('out'):
+			os.mkdir('out');
 
 		os.mkdir('out/' + dir_name);
 		print('created directory out/' + dir_name);
 
 		i = 0;
-		for group in self.groups:
+		for group in self.final:
 			#print("working on group " + str(i));
 			misc.imsave('out/%s/%06d.png' % (dir_name, i), group);
 			i += 1;
@@ -539,6 +545,7 @@ if __name__ == "__main__":
 	print('processing took ' + str(end_time - start_time) + ' seconds.');
 
 	start_time = time.clock();
-	dicer.export_groups(str(uuid.uuid4()));
+	dicer.export_groups();
+	dicer.write_out(str(uuid.uuid4()));
 	end_time = time.clock();
 	print('saving took ' + str(end_time - start_time) + ' seconds.');
