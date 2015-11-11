@@ -116,19 +116,22 @@ class Photochopper:
 			print("despeckling...");
 			self.__fast_despeckle();
 
+		# autoalign if enabled
+		if self.auto_align:
+			self.__auto_align_document();
+
 		# pre smooth if enabled
 		if self.pre_smooth:
 			print("pre-smoothing...");
 			self.original = self.__smooth_group(self.original);
+
 
 		# supercontrast if enabled
 		if self.supercontrasting_enabled:
 			print("supercontrasting...");
 			self.__supercontrast();
 
-		# autoalign if enabled
-		if self.auto_align:
-			self.__auto_align_document();
+		
 
 		print('extracting characters...');
 
@@ -256,6 +259,18 @@ class Photochopper:
 					final.append(regions[key][i].export());
 
 
+		# do a quick spacing pass
+		import csv
+
+		with open('spacingflags.csv', 'w') as f:
+			writer = csv.writer(f, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL);
+			for key in regions:
+				out = [];
+				for i in range(0, len(regions[key]) - 1):
+					r1 = regions[key][i].get_shape();
+					r2 = regions[key][i + 1].get_shape();
+					out.append(r2[1] - r1[3]);
+				writer.writerow(out);
 
 
 		print('done combining.\nexporting...');
@@ -263,7 +278,7 @@ class Photochopper:
 		print('primed for export');
 
 		# dumping data into a csv
-		import csv
+		
 
 		with open('rowflags.csv', 'w') as f:
 			writer = csv.writer(f, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL);
@@ -362,6 +377,8 @@ class Photochopper:
 
 		print('\trotating...');
 		self.original = ndimage.rotate(self.original, angle, cval=255);
+
+		misc.imsave('test_post_rotation.png', self.original);
 
 		print('\t\tnew shape: ' + str(self.original.shape));
 
