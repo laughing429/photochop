@@ -18,6 +18,6 @@ for case in os.listdir(idir):
 			if f == '.DS_Store':
 				continue;
 			out[case][unidecode(tag)].append(f);
-			print(f + '\t' + case + '\t' + unidecode(tag[-1]))
+			print(f + '\t' + case + '\t' + unidecode(tag[-2]))
 
 json.dump(out, open(idir + '.json', 'w'));

@@ -17,7 +17,7 @@ for f in os.listdir(idir):
 	ret = open('ocr.txt', 'r').read().strip();
 	case = 'lower' if ret.lower() == ret else 'upper';
 	print('\t\t\tread as "%s" (%s case)' % (ret, case));
-	odir = 'out/%s/tag_%s/' % (case, ret);
+	odir = 'out/%s/tag_%s_/' % (case, ret);
 
 	os.system('mkdir -p %s; mv %s %s' % (odir, f, odir));
 	print('mkdir -p %s; mv %s %s' % (odir, f, odir));
