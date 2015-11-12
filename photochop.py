@@ -131,7 +131,8 @@ class Photochopper:
 			print("supercontrasting...");
 			self.__supercontrast();
 
-		
+
+		misc.imsave('test_post_pre_processed.png', self.original);		
 
 		print('extracting characters...');
 
@@ -529,7 +530,7 @@ if __name__ == "__main__":
 	parser.add_argument('--smoothing-passes', required=False, type=int, help="number of smoothing passes to make");
 	opts = parser.parse_args();
 
-	dicer = Photochopper(opts.filename, 200);
+	dicer = Photochopper(opts.filename, 150);
 	if opts.max_subprocesses is not None:
 		dicer.set_max_threads(opts.max_subprocesses);
 
