@@ -233,7 +233,9 @@ class Photochopper:
 
 		# combine diacritics
 		final = [];
+		final_regions = {}
 		for key in regions:
+			final_regions[key] = [];
 			addedMultipart = False;
 			for i in range(0, len(regions[key]) - 1):
 				if addedMultipart:
@@ -254,28 +256,34 @@ class Photochopper:
 					group = _SparseArray();
 					group.integrate(regions[key][i]);
 					group.integrate(regions[key][i + 1]);
+					final_regions[key].append(group)
 					final.append(group.export());
 					addedMultipart = True;
 				else:
+					final_regions[key].append(group);
 					final.append(regions[key][i].export());
+			if not addedMultipart:
+				final.append(regions[key][-1].export());
+				final_regions[key].append(regions[key][-1]);
 
 
 		# do a quick spacing pass
 		import csv
 
 		with open('spacingflags.csv', 'w') as f:
-			writer = csv.writer(f, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL);
-			for key in regions:
+			writer = csv.writer(f, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL);
+			for key in final_regions:
 				out = [];
-				for i in range(0, len(regions[key]) - 1):
-					r1 = regions[key][i].get_shape();
-					r2 = regions[key][i + 1].get_shape();
+				for i in range(0, len(final_regions[key]) - 1):
+					r1 = final_regions[key][i].get_shape();
+					r2 = final_regions[key][i + 1].get_shape();
 					out.append(r2[1] - r1[3]);
 				writer.writerow(out);
 
 
 		print('done combining.\nexporting...');
 		self.groups = final;
+		self.final_regions = final_regions;
 		print('primed for export');
 
 		# dumping data into a csv
@@ -288,6 +296,15 @@ class Photochopper:
 
 		return;
 
+
+	def process_words(self):
+		print('processing word groups...');
+		final = {};
+		for key in self.final_regions;
+			print('\tcurrently processing line ' + str(key)'...\n\t\tdoing stats analysis pass...');
+			spacing = [];
+			for group in range(0, self.final_regions[key]):
+				pass
 
 	def export_groups(self):
 		
@@ -347,8 +364,13 @@ class Photochopper:
 			sys.stdout.write("\r\tgathering data points for doc alignment: %06f%%" % (float(x * 100)/ float(self.original.shape[1])));
 			sys.stdout.flush();
 		print('\n\tfixing up data...');
+
+		
+
 		# y's multiplied by -1 because row/col -> x,y
 		yvalues = [i[0] * -1 for i in points];
+
+		
 
 		# clean up the data first
 		mean = np.mean(yvalues);
@@ -358,12 +380,18 @@ class Photochopper:
 		to_delete = [];
 		for i in range(0, len(points)):
 			if abs(yvalues[i] - mean) > stddev/8 and yvalues[i] - mean >= 0:
+			#if abs(yvalues[i]) > self.original.shape[0]/16:
 				to_delete.append(i);
-
 				throw_count += 1;
 
 		for tdel in reversed(to_delete):
 			del points[tdel];
+
+		import csv;
+		with open('alignpoints.csv', 'w') as f:
+			writer = csv.writer(f, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL);
+			for pt in points:
+				writer.writerow(pt);
 
 		print('\tthrew out %d points outside .125 standard deviations (lb: %d, la: %d, stddev: %f, mean: %f)\n\tfinding linear regression...' % (throw_count, len(yvalues), len(points), stddev, mean));
 		yvalues = [i[0] * -1 for i in points];
