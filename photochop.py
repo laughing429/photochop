@@ -260,7 +260,7 @@ class Photochopper:
 					final.append(group.export());
 					addedMultipart = True;
 				else:
-					final_regions[key].append(group);
+					final_regions[key].append(regions[key][i]);
 					final.append(regions[key][i].export());
 			if not addedMultipart:
 				final.append(regions[key][-1].export());
@@ -300,41 +300,82 @@ class Photochopper:
 	def process_words(self):
 		print('processing word groups...');
 		final = {};
-		for key in self.final_regions;
-			print('\tcurrently processing line ' + str(key)'...\n\t\tdoing stats analysis pass...');
+		for key in self.final_regions:
+			print('\tcurrently processing line ' + str(key) + '...\n\t\tdoing stats analysis pass...');
 			spacing = [];
-			for group in range(0, self.final_regions[key]):
-				pass
+			for i in range(0, len(self.final_regions[key]) - 1):
+				r1 = self.final_regions[key][i].get_shape();
+				r2 = self.final_regions[key][i + 1].get_shape();
+				spacing.append(r2[1] - r1[3]);
+
+			q3, q1 = np.percentile(spacing, [75 ,25]);
+			print("\t\t\tq1: %f, q3: %f" % (q1,q3));
+			threshold = 3 * (q3 - q1)
+			sys.stdout.write("outliers: ");
+			final[key] = [];
+			current = [];
+			for i in range(0, len(self.final_regions[key]) - 1):
+				r1 = self.final_regions[key][i].get_shape();
+				r2 = self.final_regions[key][i + 1].get_shape();
+
+				current.append(self.final_regions[key][i].export());
+				if r2[1] - r1[3] > q3 + threshold:
+					final[key].append(deepcopy(current));
+					current = [];
+			current.append(self.final_regions[key][-1].export());
+			final[key].append(deepcopy(current));
+
+		self.words = final;
+		
+	def dump_words(self, odir):
+		i = 0;
+		os.system('mkdir dump');
+		for key in self.final_regions:
+			for grp in self.final_regions[key]:
+				misc.imsave('dump/%06d.png' % i, grp.export());
+				i += 1;
+		
+		i = 0;
+		crow = 0;
+		for key in self.words:
+			wordc = 0;
+			for word in self.words[key]:
+				os.system('mkdir -p %s/row_%d/word_%d' % (odir, crow, wordc));
+				for grp in word:
+					misc.imsave('%s/row_%d/word_%d/%06d.png' % (odir, crow, wordc, i), self.__make_square(grp));
+					i += 1
+				wordc += 1
+			crow += 1
+
+
+
+
+
+	def __make_square(self, grp):
+		# figure out the final size of the matrix and fill it with zeroes
+		final_orig = max(grp.shape[0], grp.shape[1]);
+		final_size = float(final_orig if (final_orig % 2) == 0 else final_orig + 1);
+		final = np.zeros((final_size, final_size));
+		final.fill(255);
+
+		# starting position (where to start writing the matrix)
+		starting = [0,0];
+		if final_orig == grp.shape[0]:
+			starting[1] = (final_orig/2) - (grp.shape[1]/2);
+		else:
+			starting[0] = (final_orig/2) - (grp.shape[0]/2);
+
+		#print('starting pos: ' + str(starting) + (' (corrected)' if final_orig == final_size else ''));
+
+		# write the matrix
+		for y in range(0, grp.shape[0]):
+			for x in range(0, grp.shape[1]):
+				final[y + starting[0]][x + starting[1]] = grp[y][x];
+		return final;
 
 	def export_groups(self):
-		
-
-
 		# make the final output square
-		def make_square(grp):
-			# figure out the final size of the matrix and fill it with zeroes
-			final_orig = max(grp.shape[0], grp.shape[1]);
-			final_size = float(final_orig if (final_orig % 2) == 0 else final_orig + 1);
-			final = np.zeros((final_size, final_size));
-			final.fill(255);
-
-			# starting position (where to start writing the matrix)
-			starting = [0,0];
-			if final_orig == grp.shape[0]:
-				starting[1] = (final_orig/2) - (grp.shape[1]/2);
-			else:
-				starting[0] = (final_orig/2) - (grp.shape[0]/2);
-
-			#print('starting pos: ' + str(starting) + (' (corrected)' if final_orig == final_size else ''));
-
-			# write the matrix
-			for y in range(0, grp.shape[0]):
-				for x in range(0, grp.shape[1]):
-					final[y + starting[0]][x + starting[1]] = grp[y][x];
-
-			return final;
-
-		self.final = [make_square(grp) for grp in self.groups];
+		self.final = [self.__make_square(grp) for grp in self.groups];
 
 
 
@@ -589,6 +630,8 @@ if __name__ == "__main__":
 	dicer.process();
 	end_time = time.clock();
 	print('processing took ' + str(end_time - start_time) + ' seconds.');
+	dicer.process_words();
+	dicer.dump_words('words');
 
 	start_time = time.clock();
 	dicer.export_groups();
