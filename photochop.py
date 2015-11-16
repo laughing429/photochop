@@ -226,7 +226,7 @@ class Photochopper:
 		print('sorting groups within regions...');
 		for key in regions:
 			# sort by lowest x-value
-			print('groups in region ' + str(key) + ': ' + str(len(regions[key])))
+			#print('groups in region ' + str(key) + ': ' + str(len(regions[key])))
 			regions[key] = sorted(regions[key], key=lambda g: g.get_shape()[1]);
 
 		print('combining diacritics...');
@@ -301,7 +301,7 @@ class Photochopper:
 		print('processing word groups...');
 		final = {};
 		for key in self.final_regions:
-			print('\tcurrently processing line ' + str(key) + '...\n\t\tdoing stats analysis pass...');
+	#		print('\tcurrently processing line ' + str(key) + '...\n\t\tdoing stats analysis pass...');
 			spacing = [];
 			for i in range(0, len(self.final_regions[key]) - 1):
 				r1 = self.final_regions[key][i].get_shape();
@@ -309,7 +309,7 @@ class Photochopper:
 				spacing.append(r2[1] - r1[3]);
 
 			q3, q1 = np.percentile(spacing, [75 ,25]);
-			print("\t\t\tq1: %f, q3: %f" % (q1,q3));
+	#		print("\t\t\tq1: %f, q3: %f" % (q1,q3));
 			threshold = 3 * (q3 - q1)
 			#sys.stdout.write("outliers: ");
 			final[key] = [];
