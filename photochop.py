@@ -180,7 +180,7 @@ class Photochopper:
 		# determine the number of groups a particular y-value intersects
 		for group in groups:
 			bpoints = group.get_shape();
-			print(bpoints);
+			#print(bpoints);
 			for i in range(bpoints[0], bpoints[2]):
 				row_flags[i] += 1;
 
