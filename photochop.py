@@ -166,7 +166,7 @@ class Photochopper:
 		print('\tprocessing groups');
 		groups = [];
 		for key in seen:
-			sys.stdout.write(str(key) + " ");
+			#sys.stdout.write(str(key) + " ");
 			groups.append(_SparseArray());
 			groups[-1].arr = seen[key];
 		print('\tprocessed groups');
@@ -194,7 +194,7 @@ class Photochopper:
 			elif curr and row_flags[i] <= self.min_groups_per_row:
 				rows.append((start, i));
 				curr = False;
-			sys.stdout.write(str(int(row_flags[i])) + " ");
+			#sys.stdout.write(str(int(row_flags[i])) + " ");
 
 		# dump the rows we found onto stdout
 		# print('\n\nrows:');
@@ -311,7 +311,7 @@ class Photochopper:
 			q3, q1 = np.percentile(spacing, [75 ,25]);
 			print("\t\t\tq1: %f, q3: %f" % (q1,q3));
 			threshold = 3 * (q3 - q1)
-			sys.stdout.write("outliers: ");
+			#sys.stdout.write("outliers: ");
 			final[key] = [];
 			current = [];
 			for i in range(0, len(self.final_regions[key]) - 1):
@@ -494,8 +494,8 @@ class Photochopper:
 
 		for i in range(0, len(groups)):
 			group = groups[i];
-			sys.stdout.write(str(i) + "(" + str(group.size()) + ")[" + str(group.get_bounding_points()) + "\t");
-			sys.stdout.flush();
+			#sys.stdout.write(str(i) + "(" + str(group.size()) + ")[" + str(group.get_bounding_points()) + "\t");
+			#sys.stdout.flush();
 			shape = group.get_shape();
 			for x in range(shape[1], shape[3]):
 				self.original[shape[0]][x] = 0;
@@ -635,6 +635,9 @@ if __name__ == "__main__":
 
 	start_time = time.clock();
 	dicer.export_groups();
-	dicer.write_out(str(uuid.uuid4()));
+	odir = opts.filename.split('/')[-1];
+	odir = (odir.split('.')[-2])
+
+	dicer.write_out(odir);
 	end_time = time.clock();
 	print('saving took ' + str(end_time - start_time) + ' seconds.');
