@@ -318,11 +318,11 @@ class Photochopper:
 				r1 = self.final_regions[key][i].get_shape();
 				r2 = self.final_regions[key][i + 1].get_shape();
 
-				current.append(self.final_regions[key][i].export());
+				current.append(self.__make_square(self.final_regions[key][i].export()));
 				if r2[1] - r1[3] > q3 + threshold:
 					final[key].append(deepcopy(current));
 					current = [];
-			current.append(self.final_regions[key][-1].export());
+			current.append(self.__make_square(self.final_regions[key][-1].export()));
 			final[key].append(deepcopy(current));
 
 		self.words = final;
