@@ -132,6 +132,7 @@ class Photochopper:
 			self.__supercontrast();
 
 
+                # save an image
 		misc.imsave('test_post_pre_processed.png', self.original);		
 
 		print('extracting characters...');
@@ -300,18 +301,21 @@ class Photochopper:
 	def process_words(self):
 		print('processing word groups...');
 		final = {};
+                
 		for key in self.final_regions:
-	#		print('\tcurrently processing line ' + str(key) + '...\n\t\tdoing stats analysis pass...');
+                        # do a pass to get all the spacing data
 			spacing = [];
 			for i in range(0, len(self.final_regions[key]) - 1):
+                                # keep track of the distance between groups
 				r1 = self.final_regions[key][i].get_shape();
 				r2 = self.final_regions[key][i + 1].get_shape();
 				spacing.append(r2[1] - r1[3]);
 
+                        # get q1 and q3
 			q3, q1 = np.percentile(spacing, [75 ,25]);
-	#		print("\t\t\tq1: %f, q3: %f" % (q1,q3));
+                        # outlier qualifier
 			threshold = 3 * (q3 - q1)
-			#sys.stdout.write("outliers: ");
+
 			final[key] = [];
 			current = [];
 			for i in range(0, len(self.final_regions[key]) - 1):
