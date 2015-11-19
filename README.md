@@ -3,7 +3,7 @@
 a tool to chop pngs out of images
 
 ## installation
-set up a virtual environment with `virtualenv venv' and activate it with `. venv/bin/activate`
+set up a virtual environment with `virtualenv venv` and activate it with `. venv/bin/activate`
 
 then just install all the dependencies `pip install -r requirements.txt`
 
